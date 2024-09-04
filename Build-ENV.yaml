@@ -158,7 +158,7 @@ Resources:
       Tags:
         - Key: !FindInMap [Tags, keys, Name]
           Value: !Join ["-", [!Ref "AWS::StackName", "EC2"]]
-# 還沒驗證
+
   S3Bucket1:
     Type: 'AWS::S3::Bucket'
     Properties:

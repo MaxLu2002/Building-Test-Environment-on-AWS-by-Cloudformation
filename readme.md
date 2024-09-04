@@ -92,5 +92,3 @@ To design a comprehensive and user-friendly CloudFormation architecture that all
    ```bash
    ssh -i "{your_keypair_name}.pem" ec2-user@{private_IP}
    ```
-
-這些步驟將協助您成功地使用 CloudFormation 部署並管理您的 AWS 測試環境。
