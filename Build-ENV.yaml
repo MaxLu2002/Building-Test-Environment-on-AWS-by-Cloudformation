@@ -1,0 +1,168 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Building VPC
+# --------------------------------------------------------------------------------------Mapping
+Mappings:
+  VPCrange:
+    Cidrs:
+      VPC: "10.0.0.0/16"
+      PublicSubnet1: "10.0.1.0/24"
+      PrivateSubnet1: "10.0.2.0/24"
+  Tags:
+    keys:
+      Name: "Name"
+  EC2:
+    AMI: # 選擇你要的 AMI ID (Select your AMI ID)
+      x86ID: "ami-07d737d4d8119ad79" 
+      armID: "ami-0b86b628eb7332756" 
+    size:
+      t3micro: "t3.micro" 
+      t4gmicro: "t4g.micro"
+# --------------------------------------------------------------------------------------Parameters
+Parameters:
+  AvailabilityZone1:
+    Type: String
+    Default: "ap-northeast-2a" # 選擇你要的區域1 (Select your AZ 1)
+  AvailabilityZone2:
+    Type: String
+    Default: "ap-northeast-2b" # 選擇你要的區域2 (Select your AZ 2)
+  KeyPair:
+    Type: String
+    Default: "{your_keyPair_Name}" # 輸入你剛剛手動建立的 Keypair(Enter the name of your key pair which you just created)
+# --------------------------------------------------------------------------------------Resource
+Resources:
+  MainVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !FindInMap [VPCrange, Cidrs, VPC]
+      Tags:
+        - Key: !FindInMap [Tags, keys, Name]
+          Value: !Join ["", [!Ref "AWS::StackName", "-VPC"]]
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MainVPC
+      CidrBlock: !FindInMap [VPCrange, Cidrs, PublicSubnet1]
+      AvailabilityZone: !Ref AvailabilityZone1
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: !FindInMap [Tags, keys, Name]
+          Value: !Join ["", [!Ref "AWS::StackName", "-Public-Subnet-1"]]
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MainVPC
+      CidrBlock: !FindInMap [VPCrange, Cidrs, PrivateSubnet1]
+      AvailabilityZone: !Ref AvailabilityZone2
+      Tags:
+        - Key: !FindInMap [Tags, keys, Name]
+          Value: !Join ["-", [!Ref "AWS::StackName", "-Private-Subnet-1"]]
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: !FindInMap [Tags, keys, Name]
+          Value: !Join ["-", [!Ref "AWS::StackName", "IGW"]]
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref MainVPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MainVPC
+      Tags:
+        - Key: !FindInMap [Tags, keys, Name]
+          Value: !Join ["-", [!Ref "AWS::StackName", "-Public-Route-Table"]]
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  AssociatePublicSubnetWithRouteTable:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  EIPForNatGateway1:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  NatGateway1:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt EIPForNatGateway1.AllocationId
+      SubnetId: !Ref PublicSubnet1
+
+  PublicSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Allow SSH, HTTP, and private SG traffic
+      VpcId: !Ref MainVPC
+      SecurityGroupIngress: # Inbound rule 可以依照您的需求做調整 (Inbound rule Can be modify base on your preference)
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: '0.0.0.0/0'
+        - IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+          CidrIp: '0.0.0.0/0'  
+
+  PrivateSecurityGroup: 
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Allow traffic from Public SG
+      VpcId: !Ref MainVPC
+      SecurityGroupIngress: # Inbound rule 可以依照您的需求做調整 (Inbound rule Can be modify base on your preference)
+        - IpProtocol: -1
+          SourceSecurityGroupId: !Ref PublicSecurityGroup
+
+  PublicEC2Instance1:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      ImageId: !FindInMap [EC2, AMI, armID]
+      InstanceType: !FindInMap [EC2, size, t4gmicro]
+      KeyName: !Ref KeyPair
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: 'true'
+          DeviceIndex: '0'
+          GroupSet:
+            - !Ref PublicSecurityGroup
+          SubnetId: !Ref PublicSubnet1
+      Tags:
+        - Key: !FindInMap [Tags, keys, Name]
+          Value: !Join ["-", [!Ref "AWS::StackName", "EC2"]]
+
+  PrivateEC2Instance1:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      ImageId: !FindInMap [EC2, AMI, x86ID]
+      InstanceType: !FindInMap [EC2, size, t3micro]
+      KeyName: !Ref KeyPair
+      NetworkInterfaces:
+        - DeviceIndex: '0'
+          GroupSet:
+            - !Ref PrivateSecurityGroup
+          SubnetId: !Ref PrivateSubnet1
+      Tags:
+        - Key: !FindInMap [Tags, keys, Name]
+          Value: !Join ["-", [!Ref "AWS::StackName", "EC2"]]
+# 還沒驗證
+  S3Bucket1:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: !Sub '${AWS::StackName}-cf-bucket'
+      AccessControl: Private
+      VersioningConfiguration:
+        Status: Enabled
