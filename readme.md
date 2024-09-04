@@ -1,3 +1,7 @@
+<!-- Architecture diagram 架構圖-->
+
+![infra.png](other/Infra.png)
+
 <!-- 英文版 -->
 # AWS CloudFormation Automated Testing Environment
 
